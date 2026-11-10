@@ -76,6 +76,7 @@ On connect the server sends usage instructions to the client (schemas first, the
 tables, then columns, then queries; how to pass the `schemas` array; the row cap;
 the result format). Add deployment-specific guidance, such as naming conventions,
 preferred views, or sensitive schemas to avoid, with `REDSHIFT_EXTRA_INSTRUCTIONS`.
+Write `\n` in the value for a line break, so it can be set on a single line.
 
 ## Usage
 

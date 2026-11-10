@@ -37,7 +37,9 @@ Conventions:
 - External (Spectrum) schemas, shown as type "external" in list_schemas, can be slow to query.
 - Prefer aggregates over row-level personal data, and query only what the user's task needs.`;
 
-const EXTRA_INSTRUCTIONS = (process.env.REDSHIFT_EXTRA_INSTRUCTIONS ?? "").trim();
+// A literal backslash-n in the value becomes a line break, so the value can be
+// set on one line (some launchers reject multi-line environment variables).
+const EXTRA_INSTRUCTIONS = (process.env.REDSHIFT_EXTRA_INSTRUCTIONS ?? "").replace(/\\n/g, "\n").trim();
 const INSTRUCTIONS =
   EXTRA_INSTRUCTIONS && !EXTRA_INSTRUCTIONS.startsWith("${")
     ? `${BASE_INSTRUCTIONS}\n\nSite-specific guidance:\n${EXTRA_INSTRUCTIONS}`
