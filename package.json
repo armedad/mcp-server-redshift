@@ -11,6 +11,7 @@
     "test": "npm run build && tsx test/client.ts"
   },
   "dependencies": {
+    "@aws-sdk/client-redshift": "^3.1166.0",
     "@modelcontextprotocol/sdk": "^1.32.2",
     "dotenv": "^16.0.0",
     "express": "^4.22.3",

@@ -47,6 +47,8 @@ Create a `.env` file in the root directory with the following variables:
 REDSHIFT_HOST=your-redshift-host
 REDSHIFT_PORT=5439
 REDSHIFT_DATABASE=your-database
+
+# Authentication: set a user and password, or use IAM (see Authentication below)
 REDSHIFT_USER=your-username
 REDSHIFT_PASSWORD=your-password
 
@@ -59,6 +61,32 @@ REDSHIFT_EXTRA_INSTRUCTIONS=     # Site-specific guidance appended to the server
 TRANSPORT_TYPE=stdio  # or 'sse' for Server-Sent Events
 PORT=3000  # Only used when TRANSPORT_TYPE=sse
 ```
+
+### Authentication
+
+Two modes are supported. `REDSHIFT_AUTH` forces one; when it is not set, a
+configured `REDSHIFT_PASSWORD` means password auth, otherwise IAM.
+
+**Password:** `REDSHIFT_USER` and `REDSHIFT_PASSWORD`.
+
+**IAM:** the server exchanges AWS credentials for temporary database
+credentials (valid for one hour, renewed automatically before they expire).
+
+| Setting | Purpose |
+|---|---|
+| `REDSHIFT_AWS_ACCESS_KEY_ID`, `REDSHIFT_AWS_SECRET_ACCESS_KEY`, `REDSHIFT_AWS_SESSION_TOKEN` | AWS credentials. When unset, the default AWS credential chain is used (`AWS_PROFILE`, environment variables, SSO, instance roles) |
+| `REDSHIFT_USER` | Optional. When set, requests that database user with `GetClusterCredentials` (needs `redshift:GetClusterCredentials` on that user). When unset, `GetClusterCredentialsWithIAM` maps the IAM identity to a database user (needs `redshift:GetClusterCredentialsWithIAM`) |
+| `REDSHIFT_CLUSTER_ID`, `REDSHIFT_AWS_REGION` | Optional. Derived from the cluster endpoint name, including when connecting through a DNS alias |
+
+IAM authentication currently supports provisioned clusters, not Redshift Serverless.
+
+### Packaged defaults
+
+Every setting also accepts a `NAME_DEFAULT` variant (for example
+`REDSHIFT_AWS_ACCESS_KEY_ID_DEFAULT`) that is used when `NAME` is blank. This lets
+a deployment ship defaults, such as a shared read-only IAM key, while users can
+still supply their own values. Anything shipped this way is readable by everyone
+who receives the package, so use a least-privilege identity and rotate it.
 
 ### TLS
 
@@ -174,6 +202,7 @@ src/
 - All queries are executed in read-only transactions that are always rolled back
 - `query` accepts exactly one statement per call and refuses transaction-control statements (BEGIN, COMMIT, SET TRANSACTION and similar), so a query cannot end the read-only transaction and run further statements outside it. Statements are sent with the extended query protocol, which also makes the server reject multiple commands
 - Use a dedicated, least-privilege database user; its grants are the real security boundary
+- IAM authentication uses short-lived database credentials; secrets are never logged or returned by `server_info`
 - TLS certificates are always verified (see TLS above)
 - Logs go to stderr, so they never corrupt the stdio MCP stream
 - Environment variables should be properly secured

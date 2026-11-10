@@ -7,7 +7,7 @@ import { handleQuery, resolveMaxRows, QueryInputError, DEFAULT_MAX_ROWS, MAX_ROW
 import { handleListSchemas } from "../tools/listSchemas.js";
 import { config } from "../config/database.js";
 import { formatResult } from "./format.js";
-import { certName } from "../config/pool.js";
+import { certName, authInfo } from "../config/pool.js";
 
 // Reported by server_info and the MCP handshake; kept in step with package.json.
 const require = createRequire(import.meta.url);
@@ -84,7 +84,7 @@ export function createServer() {
         }
       }, {
         name: "server_info",
-        description: "Show this server's version, the host it connects to, and the name its TLS certificate is verified against. Contains no credentials.",
+        description: "Show this server's version, the host it connects to, and the name its TLS certificate is verified against. Includes the authentication mode; contains no credentials.",
         inputSchema: {
           type: "object",
           properties: {}
@@ -181,6 +181,7 @@ export function createServer() {
             port: config.port,
             database: config.database,
             tlsCertificateVerifiedAgainst: certName,
+            ...authInfo(),
             schemas: config.schemas ?? "all",
             queryDefaultMaxRows: DEFAULT_MAX_ROWS,
             queryMaxRowsCeiling: MAX_ROWS_CEILING,
