@@ -216,16 +216,16 @@ export function createServer() {
 
         case "query": {
           const sql = request.params.arguments?.sql as string;
-          let maxRows: number;
+          let result;
           try {
-            maxRows = resolveMaxRows(request.params.arguments?.max_rows);
+            const maxRows = resolveMaxRows(request.params.arguments?.max_rows);
+            result = await handleQuery(sql, maxRows);
           } catch (e) {
             if (e instanceof QueryInputError) {
               return { content: [{ type: "text", text: e.message }], isError: true };
             }
             throw e;
           }
-          const result = await handleQuery(sql, maxRows);
           return {
             content: [{
               type: "text",

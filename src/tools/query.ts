@@ -25,14 +25,33 @@ export function resolveMaxRows(requested: unknown): number {
   return n;
 }
 
-// A single statement can be streamed through a cursor, so Redshift stops
-// after max_rows + 1 rows instead of sending the whole result.
-function singleStatement(sql: string): string | null {
-  const trimmed = sql.trim().replace(/;\s*$/, "");
-  return trimmed.includes(";") ? null : trimmed;
+// Statements that end or alter the read-only transaction are refused outright.
+const TRANSACTION_CONTROL =
+  /^\s*(begin|start\s+transaction|commit|end|rollback|abort|savepoint|release|prepare\s+transaction|set\s+(session\s+characteristics|transaction))\b/i;
+
+// Exactly one statement per call. Several statements in one call could end
+// the read-only transaction (for example "COMMIT; DELETE ...") and run the
+// rest outside it. A trailing semicolon is allowed.
+export function singleStatement(sql: string): string {
+  const trimmed = (sql ?? "").trim().replace(/;\s*$/, "").trim();
+  if (trimmed.length === 0) throw new QueryInputError("The sql argument is empty.");
+  if (trimmed.includes(";")) {
+    throw new QueryInputError(
+      "Send exactly one SQL statement per query call. Semicolons are only allowed at the end of the statement."
+    );
+  }
+  if (TRANSACTION_CONTROL.test(trimmed)) {
+    throw new QueryInputError(
+      "Transaction-control statements (BEGIN, COMMIT, ROLLBACK, SET TRANSACTION and similar) are not allowed; every query already runs in a read-only transaction."
+    );
+  }
+  return trimmed;
 }
 
 export async function handleQuery(sql: string, maxRows: number) {
+  // Validate before touching the database.
+  const statement = singleStatement(sql);
+
   const client = await pool.connect();
   try {
     // Start a read-only transaction
@@ -40,18 +59,17 @@ export async function handleQuery(sql: string, maxRows: number) {
 
     let rows: Record<string, unknown>[] = [];
     let method = "cursor";
-    const statement = singleStatement(sql);
     let cursorOpened = false;
 
-    if (statement) {
-      try {
-        await client.query(`DECLARE mcp_capped_cursor CURSOR FOR ${statement}`);
-        cursorOpened = true;
-      } catch {
-        // Not a cursor-able statement (for example SHOW or EXPLAIN): run it normally below.
-        await client.query("ROLLBACK");
-        await client.query("BEGIN TRANSACTION READ ONLY");
-      }
+    // queryMode "extended" sends the text as a single prepared statement, so
+    // the server itself rejects anything containing more than one command.
+    try {
+      await client.query({ text: `DECLARE mcp_capped_cursor CURSOR FOR ${statement}`, queryMode: "extended" } as any);
+      cursorOpened = true;
+    } catch {
+      // Not a cursor-able statement (for example SHOW or EXPLAIN): run it normally below.
+      await client.query("ROLLBACK");
+      await client.query("BEGIN TRANSACTION READ ONLY");
     }
 
     if (cursorOpened) {
@@ -59,11 +77,8 @@ export async function handleQuery(sql: string, maxRows: number) {
       rows = fetched.rows;
     } else {
       method = "in-memory";
-      const result: unknown = await client.query(sql);
-      // A multi-statement query returns one result per statement; keep the last one with rows.
-      const results = Array.isArray(result) ? result : [result];
-      const withRows = results.filter((r: any) => Array.isArray(r?.rows) && r.fields?.length);
-      rows = withRows.length > 0 ? (withRows[withRows.length - 1] as any).rows : [];
+      const result = await client.query({ text: statement, queryMode: "extended" } as any);
+      rows = Array.isArray(result?.rows) ? result.rows : [];
     }
 
     const truncated = rows.length > maxRows;

@@ -172,6 +172,7 @@ src/
 ## Security Considerations
 
 - All queries are executed in read-only transactions that are always rolled back
+- `query` accepts exactly one statement per call and refuses transaction-control statements (BEGIN, COMMIT, SET TRANSACTION and similar), so a query cannot end the read-only transaction and run further statements outside it. Statements are sent with the extended query protocol, which also makes the server reject multiple commands
 - Use a dedicated, least-privilege database user; its grants are the real security boundary
 - TLS certificates are always verified (see TLS above)
 - Logs go to stderr, so they never corrupt the stdio MCP stream
