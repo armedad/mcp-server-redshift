@@ -17,5 +17,5 @@ export interface DatabaseConfig {
   database: string;
   user: string;
   password: string;
-  schemas: string[];
+  schemas: string[] | null; // null means all schemas
 } 

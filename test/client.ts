@@ -80,7 +80,7 @@ async function runTests() {
       name: "list_tables",
       arguments: {}
     }) as ToolResponse;
-    console.log("Tables:", JSON.stringify(JSON.parse(listTablesResult.content[0].text), null, 2));
+    console.log("Tables:", listTablesResult.content[0].text);
     console.log();
 
     // Test 3: List tables (specific schema)
@@ -91,7 +91,7 @@ async function runTests() {
         schemas: ["utility_go"]
       }
     }) as ToolResponse;
-    console.log("Tables in utility_go schema:", JSON.stringify(JSON.parse(listTablesSchemaResult.content[0].text), null, 2));
+    console.log("Tables in utility_go schema:", listTablesSchemaResult.content[0].text);
     console.log();
 
     // Test 4: Get table schemas
@@ -105,7 +105,7 @@ async function runTests() {
         ]
       }
     }) as ToolResponse;
-    console.log("Table schemas:", JSON.stringify(JSON.parse(getSchemaResult.content[0].text), null, 2));
+    console.log("Table schemas:", getSchemaResult.content[0].text);
     console.log();
 
     // Test 5: Execute query
@@ -116,7 +116,7 @@ async function runTests() {
         sql: "SELECT * FROM utility_go.users LIMIT 5"
       }
     }) as ToolResponse;
-    console.log("Query result:", JSON.stringify(JSON.parse(queryResult.content[0].text), null, 2));
+    console.log("Query result:", queryResult.content[0].text);
     console.log();
 
     console.log("All tests completed successfully!");

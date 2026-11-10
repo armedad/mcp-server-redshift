@@ -11,7 +11,7 @@ export async function setupTransport(server: Server) {
   if (transportType === "stdio") {
     const transport = new StdioServerTransport();
     await server.connect(transport);
-    console.log("MCP server started with stdio transport");
+    console.error("MCP server started with stdio transport");
   } else if (transportType === "sse") {
     const app = express();
 
@@ -31,17 +31,17 @@ export async function setupTransport(server: Server) {
 
     // SSE endpoint
     app.get("/sse", async (_: Request, res: Response) => {
-      console.log("New SSE connection established");
+      console.error("New SSE connection established");
       const transport = new SSEServerTransport("/messages", res);
       transports[transport.sessionId] = transport;
       
       res.on("close", () => {
-        console.log("SSE connection closed");
+        console.error("SSE connection closed");
         delete transports[transport.sessionId];
       });
       
       await server.connect(transport);
-      console.log("SSE transport connected successfully");
+      console.error("SSE transport connected successfully");
     });
 
     // Messages endpoint
@@ -64,8 +64,8 @@ export async function setupTransport(server: Server) {
     });
 
     app.listen(port, () => {
-      console.log(`MCP server started with SSE transport on port ${port}`);
-      console.log(`Server listening on http://localhost:${port}`);
+      console.error(`MCP server started with SSE transport on port ${port}`);
+      console.error(`Server listening on http://localhost:${port}`);
     });
   } else {
     throw new Error(`Unsupported transport type: ${transportType}`);

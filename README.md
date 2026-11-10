@@ -4,9 +4,13 @@ A Model Context Protocol (MCP) server implementation for Amazon Redshift, provid
 
 ## Features
 
-- List tables, views, and materialized views across multiple schemas
+- List every schema with its type (local or external) and table count
+- List tables, views, and external (Spectrum) tables across one, several, or all schemas
 - Get detailed schema information for multiple tables in a single request
-- Execute read-only SQL queries against Redshift
+- Execute read-only SQL queries against Redshift, with a row cap the caller can raise per query
+- Compact, token-efficient result format
+- Server instructions that teach the model how to use the tools, extendable per deployment
+- TLS certificate verification that works when connecting through a DNS alias (CNAME)
 - Support for both stdio and SSE (Server-Sent Events) transport
 - Type-safe implementation in TypeScript
 
@@ -45,12 +49,33 @@ REDSHIFT_PORT=5439
 REDSHIFT_DATABASE=your-database
 REDSHIFT_USER=your-username
 REDSHIFT_PASSWORD=your-password
-REDSHIFT_SCHEMAS=public,schema1,schema2  # Comma-separated list of schemas
+
+# Optional
+REDSHIFT_SCHEMAS=public,schema1  # Default schemas for list_tables; blank, "all" or "*" means every schema
+REDSHIFT_CERT_HOST=              # Hostname to verify the TLS certificate against (see TLS below)
+REDSHIFT_EXTRA_INSTRUCTIONS=     # Site-specific guidance appended to the server instructions
 
 # Server Configuration
 TRANSPORT_TYPE=stdio  # or 'sse' for Server-Sent Events
 PORT=3000  # Only used when TRANSPORT_TYPE=sse
 ```
+
+### TLS
+
+Connections use TLS with full certificate verification. Redshift certificates are
+issued for the cluster's AWS endpoint name (`*.xxxxxxxx.region.redshift.amazonaws.com`),
+so connecting through a friendlier DNS alias normally fails hostname verification.
+The server follows the alias's CNAME chain to the first `*.redshift.amazonaws.com`
+(or `*.redshift-serverless.amazonaws.com`) name and verifies the certificate against
+it. Set `REDSHIFT_CERT_HOST` to pin the expected name explicitly; this is recommended
+if you do not control the alias's DNS.
+
+### Server instructions
+
+On connect the server sends usage instructions to the client (schemas first, then
+tables, then columns, then queries; how to pass the `schemas` array; the row cap;
+the result format). Add deployment-specific guidance, such as naming conventions,
+preferred views, or sensitive schemas to avoid, with `REDSHIFT_EXTRA_INSTRUCTIONS`.
 
 ## Usage
 
@@ -67,16 +92,24 @@ npm start
 
 ### Available Tools
 
-1. **List Tables** (`list_tables`)
-   - Lists all tables, views, and materialized views in specified schemas
-   - Optional `schemas` parameter to filter by specific schemas
+1. **List Schemas** (`list_schemas`)
+   - Lists every schema with its type (`local` or `external`) and table count
+   - A good first call before `list_tables`
+
+2. **List Tables** (`list_tables`)
+   - Lists tables, views, and external tables in the given schemas
+   - `schemas` is an array of schema names. Common variations (`schema`, a single
+     string, a comma-separated string) are accepted; unknown arguments return an
+     error that shows the correct format instead of silently listing everything
+   - With no schemas it uses `REDSHIFT_SCHEMAS`, or every schema if that is blank
+   - Results are capped at 500 rows and report `schemasApplied`
    ```json
    {
      "schemas": ["public", "analytics"]
    }
    ```
 
-2. **Get Tables Schema** (`get_tables_schema`)
+3. **Get Tables Schema** (`get_tables_schema`)
    - Get schema information for multiple tables across different schemas
    ```json
    {
@@ -87,13 +120,34 @@ npm start
    }
    ```
 
-3. **Query** (`query`)
+4. **Query** (`query`)
    - Execute read-only SQL queries against the database
+   - Returns at most 1,000 rows by default. Set `max_rows` (up to 10,000) to raise
+     the cap for one query; the instructions tell the model to do this only when
+     the user explicitly asks. Single statements are streamed through a cursor, so
+     Redshift stops sending rows at the cap
    ```json
    {
-     "sql": "SELECT * FROM public.users LIMIT 5"
+     "sql": "SELECT * FROM public.users",
+     "max_rows": 5000
    }
    ```
+
+5. **Server Info** (`server_info`)
+   - Shows the server version, host, database, the name the TLS certificate is
+     verified against, and the row-cap limits. Contains no credentials
+
+### Result format
+
+Results are compact to save tokens: an optional first line of JSON metadata, a
+`columns:` line, then one JSON array per row.
+
+```
+{"rowCount":2,"maxRowsApplied":1000,"truncated":false}
+columns: ["id","name"]
+[1,"alice"]
+[2,"bob"]
+```
 
 ### Testing
 
@@ -116,7 +170,10 @@ src/
 
 ## Security Considerations
 
-- All queries are executed in read-only transactions
+- All queries are executed in read-only transactions that are always rolled back
+- Use a dedicated, least-privilege database user; its grants are the real security boundary
+- TLS certificates are always verified (see TLS above)
+- Logs go to stderr, so they never corrupt the stdio MCP stream
 - Environment variables should be properly secured
 - CORS is enabled for SSE transport (should be configured for production)
 - Database credentials should be managed securely
